@@ -109,6 +109,7 @@ class LineAngles(object):
 
         #nested loop, looking for a faster way
         count = 0
+
         for row1 in arcpy.SearchCursor(line_path):
             #step progress bar
             count+=1
@@ -178,10 +179,19 @@ class LineAngles(object):
                         v_a = (vertex, (a.X, a.Y))
                         v_b = (vertex, (b.X, b.Y))
                         a_b = ((a.X, a.Y), (b.X, b.Y))
-                        #solving for angle using law of cosines
-                        angle = math.acos(
-                            (self.magnitude(a_b) ** 2 - self.magnitude(v_a) ** 2 - self.magnitude(v_b) ** 2) / (-2 * self.magnitude(v_a) * self.magnitude(v_b))) * 180 / math.pi
-
+                        m_ab = self.magnitude(a_b)
+                        m_va = self.magnitude(v_a)
+                        m_vb = self.magnitude(v_b)
+                        if m_va>0 and m_vb>0 and m_ab>0:
+                            #solving for angle using law of cosines
+                            l = (m_ab ** 2 - m_va ** 2 - m_vb ** 2) / (-2 * m_va * m_vb)
+                            #control for math domain issues, this seems to happen when lines are exactly 180 degrees apart
+                            if l<=1 and l>=-1:
+                                angle = math.acos(l) * 180 / math.pi
+                            else:
+                                angle = -1
+                        else:
+                            angle=-1
                         #creating the output row and writing data to output feature class
                         out_row = out_cur.newRow()
                         out_row.setValue('fid1', row1.getValue(fid))
@@ -189,4 +199,6 @@ class LineAngles(object):
                         out_row.setValue('angle', angle)
                         out_row.setValue('SHAPE', arcpy.Point(vertex[0], vertex[1]))
                         out_cur.insertRow(out_row)
+
+
         return
