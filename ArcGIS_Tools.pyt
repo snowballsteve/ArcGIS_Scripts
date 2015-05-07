@@ -85,7 +85,7 @@ class LineAngles(object):
         line_path = params['input_lines'].valueAsText
         out_path = params['output_path'].valueAsText
         fid = params['id'].valueAsText
-        threshold = params['threshold']
+        threshold = float(params['threshold'].valueAsText)
 
         #create the output feature class
         out_data = arcpy.CreateFeatureclass_management(os.path.dirname(os.path.abspath(out_path)),
