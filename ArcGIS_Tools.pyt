@@ -372,7 +372,7 @@ class LineAngles(object):
 class SplitLayerByAttributes(object):
     def __init__(self):
         """Define the tool (tool name is the name of the class)."""
-        self.label = "Angles Between Lines"
+        self.label = "Split Layer By Attributes"
         self.description = "For all intersecting lines, will produce an output table of the angle between them."
         self.canRunInBackground = False
 
