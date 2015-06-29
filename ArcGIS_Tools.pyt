@@ -12,7 +12,174 @@ class Toolbox(object):
         self.alias = ""
 
         # List of tool classes associated with this toolbox
-        self.tools = [LineAngles]
+        self.tools = [LineAngles, BatchExportAndPrint, SplitLayerByAttributes]
+
+
+class BatchExportAndPrint(object):
+    def __init__(self):
+        """Define the tool (tool name is the name of the class)."""
+        self.label = "Batch Export and Print"
+        self.description = "For a bunch of mxd's, export the map as a various output formats, or print them"
+        self.canRunInBackground = False
+
+    def param_maker(self, p_name, plabel=None, enabled=True):
+        p = arcpy.Parameter(
+            name=p_name
+            , direction='Input'
+            , datatype='GPBoolean'
+            , parameterType='Optional'
+            ,enabled=enabled
+        )
+        p.value = False
+        if plabel:
+            p.displayName = plabel
+        else:
+            p.displayName = p_name
+        return p
+
+    def getParameterInfo(self):
+        """Define parameter definitions"""
+        params = []
+        params.append(
+            arcpy.Parameter(
+                name='map_documents'
+                , displayName='Map Documents'
+                , direction='Input'
+                , multiValue=True
+                , datatype='DEMapDocument'
+            )
+        )
+        params.append(self.param_maker('pdf'))
+        params.append(self.param_maker('merge', 'Single PDF?','false'))
+        params.append(self.param_maker('jpeg'))
+        params.append(self.param_maker('png'))
+        params.append(self.param_maker('emf'))
+        params.append(self.param_maker('ai'))
+
+        params.append(
+            arcpy.Parameter(
+                name='print'
+                , displayName='Print Documents'
+                , direction='Input'
+                , datatype='GPBoolean'
+                , parameterType='Optional'
+            )
+        )
+        printer = arcpy.Parameter(
+            name='printer'
+            , displayName='Select Printer'
+            , direction='Input'
+            , datatype='GPString'
+            , parameterType='Optional'
+        )
+        printer.enabled = False
+        printer.filter.list = arcpy.ListPrinterNames()
+        params.append(printer)
+        params.append(
+            arcpy.Parameter(
+                name='output_folder'
+                , displayName='Output Folder'
+                , direction='Input'
+                , datatype='DEFolder'
+                , parameterType='Optional'
+            )
+        )
+
+        return params
+
+    def updateParameters(self, parameters):
+        """Modify the values and properties of parameters before internal
+        validation is performed.  This method is called whenever a parameter
+        has been changed."""
+        params = {p.name: p for p in parameters}
+        if params['print'].altered:
+            params['printer'].enabled = params['print'].value
+
+        if params['pdf'].altered:
+            params['merge'].enabled=params['pdf'].value
+        return
+
+    def execute(self, parameters, messages):
+        params = {p.name: p for p in parameters}
+
+        mxds = params['map_documents'].value
+
+        if params['pdf'].value and params['merge'].value:
+            pdf_out = params['output_folder'].valueAsText
+            if pdf_out == '': pdf_out = os.path.dirname(mxds[0])
+            combinedpdf = arcpy.mapping.PDFDocumentCreate(os.path.join(pdf_out, "CombinedMaps.pdf"))
+
+        for mxd in mxds:
+            mxd_name, ext = os.path.splitext(mxd)
+
+            map = arcpy.mapping
+            map_document = map.MapDocument(mxd)
+
+            brokenList = arcpy.mapping.ListBrokenDataSources(map_document)
+            if brokenList:
+                errorString = mxd + " has broken data sources on layer(s): "
+            for item in brokenList:
+                errorString = errorString + "'" + item.name + "'"
+            arcpy.AddWarning(errorString)
+
+            output_folder = params['output_folder'].valueAsText
+            if output_folder == '':
+                output_folder = os.path.dirname(mxd)
+
+            # Set all the parameters as variables here:
+            data_frame = 'PAGE_LAYOUT'
+            resolution = "300"
+            image_quality = "NORMAL"
+            colorspace = "RGB"
+            compress_vectors = "True"
+            image_compression = "DEFLATE"
+            picture_symbol = 'RASTERIZE_BITMAP'
+            convert_markers = "TRUE"
+            embed_fonts = "True"
+            layers_attributes = "NONE"
+            georef_info = "False"
+
+            # perform selected operations
+            if params['pdf'].value:
+                arcpy.AddMessage("Exporting: " + mxd + " as PDF")
+                out_pdf = os.path.join(output_folder, mxd_name + ".pdf")
+                map.ExportToPDF(map_document, out_pdf, data_frame, 640, 480, resolution, image_quality, colorspace,
+                                compress_vectors, image_compression, picture_symbol, convert_markers, embed_fonts,
+                                layers_attributes, georef_info)
+                if params['merge'].value:
+                    combinedpdf.appendPages(out_pdf)
+
+            if params['jpeg'].value:
+                arcpy.AddMessage("Exporting: " + mxd + " as JPEG")
+                out_jpg = os.path.join(output_folder, mxd_name + ".jpg")
+                map.ExportToJPEG(map_document, out_jpg)
+
+            if params['png'].value:
+                arcpy.AddMessage("Exporting: " + mxd + " as PNG")
+                out_png = os.path.join(output_folder, mxd_name + ".png")
+                map.ExportToPNG(map_document, out_png, data_frame, 640, 480, resolution)
+
+            if params['emf'].value:
+                arcpy.AddMessage("Exporting: " + mxd + " as EMF")
+                out_emf = os.path.join(output_folder, mxd_name + ".emf")
+                map.ExportToEMF(map_document, out_emf, data_frame, 640, 480, resolution, image_quality, "#",
+                                picture_symbol,
+                                convert_markers)
+
+            if params['ai'].value:
+                arcpy.AddMessage("Exporting: " + mxd + " as AI")
+                out_AI = os.path.join(output_folder, mxd_name + ".ai")
+                map.ExportToAI(map_document, out_AI)
+
+            if params['print'].value:
+                arcpy.AddMessage("Printing: " + mxd)
+                map.PrintMap(map_document, params['printer'].valueAsText)
+
+            del map
+
+            if params['pdf'].value and params['merge'].value:
+                combinedpdf.saveAndClose()
+                del combinedpdf
 
 
 class LineAngles(object):
@@ -25,18 +192,18 @@ class LineAngles(object):
     def getParameterInfo(self):
         """Define parameter definitions"""
         params = []
-        input =  arcpy.Parameter(
-                name='input_lines'
-                , displayName='Input Polylines'
-                , direction='Input'
-                , datatype='GPLayer'
+        input = arcpy.Parameter(
+            name='input_lines'
+            , displayName='Input Polylines'
+            , direction='Input'
+            , datatype='GPLayer'
         )
         params.append(input)
         id = arcpy.Parameter(
-                name='id'
-                , displayName='Unique ID Field'
-                , direction='Input'
-                , datatype='Field'
+            name='id'
+            , displayName='Unique ID Field'
+            , direction='Input'
+            , datatype='Field'
         )
         id.parameterDependencies = [input.name]
         params.append(id)
@@ -81,13 +248,13 @@ class LineAngles(object):
         """The source code of the tool."""
         params = {p.name: p for p in parameters}
 
-        #input parameters
+        # input parameters
         line_path = params['input_lines'].valueAsText
         out_path = params['output_path'].valueAsText
         fid = params['id'].valueAsText
         threshold = float(params['threshold'].valueAsText)
 
-        #create the output feature class
+        # create the output feature class
         out_data = arcpy.CreateFeatureclass_management(os.path.dirname(os.path.abspath(out_path)),
                                                        os.path.basename(out_path), 'POINT',
                                                        spatial_reference=arcpy.Describe(line_path).spatialReference)
@@ -100,20 +267,20 @@ class LineAngles(object):
 
         #create the progress bar
         n = sum([1 for x in arcpy.SearchCursor(line_path)])
-        step=1
-        while 10**step<n:
-            step = step+1
-        step = 10**(step-2)
-        if step<1: step=1
-        arcpy.SetProgressor('step','Processing Polylines', 0, n , step)
+        step = 1
+        while 10 ** step < n:
+            step = step + 1
+        step = 10 ** (step - 2)
+        if step < 1: step = 1
+        arcpy.SetProgressor('step', 'Processing Polylines', 0, n, step)
 
         #nested loop, looking for a faster way
         count = 0
 
         for row1 in arcpy.SearchCursor(line_path):
             #step progress bar
-            count+=1
-            if count%step == 0:
+            count += 1
+            if count % step == 0:
                 arcpy.SetProgressorPosition()
 
             for row2 in arcpy.SearchCursor(line_path):
@@ -127,7 +294,7 @@ class LineAngles(object):
                     shape1_last = arcpy.PointGeometry(row1.SHAPE.lastPoint)
                     shape2_first = arcpy.PointGeometry(row2.SHAPE.firstPoint)
                     shape2_last = arcpy.PointGeometry(row2.SHAPE.lastPoint)
-                    touches = False #flag for if we have lines that touch
+                    touches = False  #flag for if we have lines that touch
 
                     '''
                     notation below: vertex is the average of the coincident endpoints that touch each other
@@ -182,16 +349,16 @@ class LineAngles(object):
                         m_ab = self.magnitude(a_b)
                         m_va = self.magnitude(v_a)
                         m_vb = self.magnitude(v_b)
-                        if m_va>0 and m_vb>0 and m_ab>0:
+                        if m_va > 0 and m_vb > 0 and m_ab > 0:
                             #solving for angle using law of cosines
                             l = (m_ab ** 2 - m_va ** 2 - m_vb ** 2) / (-2 * m_va * m_vb)
                             #control for math domain issues, this seems to happen when lines are exactly 180 degrees apart
-                            if l<=1 and l>=-1:
+                            if l <= 1 and l >= -1:
                                 angle = math.acos(l) * 180 / math.pi
                             else:
                                 angle = -1
                         else:
-                            angle=-1
+                            angle = -1
                         #creating the output row and writing data to output feature class
                         out_row = out_cur.newRow()
                         out_row.setValue('fid1', row1.getValue(fid))
@@ -200,5 +367,64 @@ class LineAngles(object):
                         out_row.setValue('SHAPE', arcpy.Point(vertex[0], vertex[1]))
                         out_cur.insertRow(out_row)
 
-
         return
+
+class SplitLayerByAttributes(object):
+    def __init__(self):
+        """Define the tool (tool name is the name of the class)."""
+        self.label = "Angles Between Lines"
+        self.description = "For all intersecting lines, will produce an output table of the angle between them."
+        self.canRunInBackground = False
+
+    def getParameterInfo(self):
+        """Define parameter definitions"""
+        params = []
+        input = arcpy.Parameter(
+            name='input_layer'
+            , displayName='Input Layer'
+            , direction='Input'
+            , datatype='GPLayer'
+        )
+        params.append(input)
+        attribute = arcpy.Parameter(
+            name='attribute'
+            , displayName='Attribute'
+            , direction='Input'
+            , datatype='Field'
+        )
+        attribute.parameterDependencies = [input.name]
+        params.append(attribute)
+        params.append(
+            arcpy.Parameter(
+                name='output_path'
+                , displayName='Output Folder'
+                , direction='Input'
+                , datatype='DEFolder'
+            )
+        )
+        return params
+
+    def isLicensed(self):
+        """Set whether tool is licensed to execute."""
+        return True
+
+    def updateParameters(self, parameters):
+        """Modify the values and properties of parameters before internal
+        validation is performed.  This method is called whenever a parameter
+        has been changed."""
+        return
+
+
+    def updateMessages(self, parameters):
+        """Modify the messages created by internal validation for each tool
+        parameter.  This method is called after internal validation."""
+        return
+
+    def execute(self, parameters, messages):
+        params = {p.name: p for p in parameters}
+        unique_values = [row.getValue(params['attribue']) for row in arcpy.SearchCursor(params['input_layer'])]
+        for v in unique_values:
+            selection = arcpy.SelectLayerByAttribute_management(params['input_layer'],'NEW_SELECTION','%s = %s' %(params['attribue'],v))
+            out_shapefile = os.path.join(params['output_path'],v.replace(' ','_'))
+            arcpy.CopyFeatures_management(selection,out_shapefile)
+
