@@ -429,6 +429,6 @@ class SplitLayerByAttributes(object):
             arcpy.SetProgressorPosition()
             arcpy.SetProgressorLabel('Processing %s' %v)
             selection = arcpy.SelectLayerByAttribute_management(lyr,'NEW_SELECTION','"%s" = \'%s\'' %(params['attribute'], v))
-            out_shapefile = os.path.join(params['output_path'], v.replace(' ','_'))
+            out_shapefile = os.path.join(params['output_path'], v.replace(' ','_').replace('-','_'))
             arcpy.CopyFeatures_management(selection, out_shapefile)
 
