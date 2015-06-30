@@ -421,10 +421,13 @@ class SplitLayerByAttributes(object):
         return
 
     def execute(self, parameters, messages):
-        params = {p.name: p for p in parameters}
-        unique_values = [row.getValue(params['attribue']) for row in arcpy.SearchCursor(params['input_layer'])]
+        params = {p.name: p.valueAsText for p in parameters}
+        unique_values = list(set([row.getValue(params['attribute']) for row in arcpy.SearchCursor(params['input_layer'])]))
+        arcpy.SetProgressor('step',"Splitting Data",0, len(unique_values))
         for v in unique_values:
-            selection = arcpy.SelectLayerByAttribute_management(params['input_layer'],'NEW_SELECTION','%s = %s' %(params['attribue'],v))
-            out_shapefile = os.path.join(params['output_path'],v.replace(' ','_'))
-            arcpy.CopyFeatures_management(selection,out_shapefile)
+            arcpy.SetProgressorPosition()
+            arcpy.SetProgressorLabel('Processing %s' %v)
+            selection = arcpy.SelectLayerByAttribute_management(params['input_layer'],'NEW_SELECTION',"%s = '%s'" %(params['attribute'],v))
+            out_shapefile = os.path.join(params['output_path'], v.replace(' ','_'))
+            arcpy.CopyFeatures_management(selection, out_shapefile)
 
